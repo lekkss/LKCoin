@@ -1,6 +1,7 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, prefer_typing_uninitialized_variables
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart';
 import 'package:lkcoin/slider_widget.dart';
 import 'package:web3dart/web3dart.dart';
@@ -39,8 +40,86 @@ class _MyHomePageState extends State<MyHomePage> {
   late Web3Client ethClient;
   bool data = false;
   int myAmount = 0;
+  var txHash;
 
   final myAddress = '0x387B8BC6d218aF571b2b5Be393ba57b41c5152aE';
+
+  var myData;
+  @override
+  void initState() {
+    super.initState();
+    httpClient = Client();
+    ethClient = Web3Client(
+      "https://rinkeby.infura.io/v3/584ac9558a7d46ec920fc65ce0d57a36",
+      httpClient,
+    );
+    getBalance(myAddress);
+  }
+
+  Future<DeployedContract> loadContract() async {
+    String abi = await rootBundle.loadString("assets/api.json");
+    //TODO: contract
+    String contractAddress = "0xB21033c2A8F9685f18fd1BBF480fb4B6db42471B";
+
+    final contract = DeployedContract(ContractAbi.fromJson(abi, "LKCoin"),
+        EthereumAddress.fromHex(contractAddress));
+
+    return contract;
+  }
+
+  Future<List<dynamic>> query(String functionName, List<dynamic> args) async {
+    final contract = await loadContract();
+    final ethFunction = contract.function(functionName);
+    final result = await ethClient.call(
+        contract: contract, function: ethFunction, params: args);
+
+    return result;
+  }
+
+  Future<void> getBalance(String targetAddress) async {
+    // EthereumAddress address  = EthereumAddress.fromHex(targetAddress);
+    List<dynamic> result = await query("getBalance", []);
+
+    myData = result[0];
+    data = true;
+    setState(() {});
+  }
+
+  Future<String> submit(String functionName, List<dynamic> args) async {
+    EthPrivateKey credentials = EthPrivateKey.fromHex(
+        "314629477196203757d41fa5305835fcebb789fc1cfa2c296441c42b0544f131");
+
+    DeployedContract contract = await loadContract();
+
+    final ethFunction = contract.function(functionName);
+    final result = await ethClient.sendTransaction(
+      credentials,
+      Transaction.callContract(
+          contract: contract, function: ethFunction, parameters: args),
+      fetchChainIdFromNetworkId: true,
+    );
+
+    return result;
+  }
+
+  Future<String> depositCoin() async {
+    var bigAmount = BigInt.from(myAmount);
+    var response = submit("depositBalance", [bigAmount]);
+    txHash = response as String;
+    setState(() {});
+    debugPrint("Deposited");
+    return response;
+  }
+
+  Future<String> withdrawCoin() async {
+    var bigAmount = BigInt.from(myAmount);
+    var response = submit("depositBalance", [bigAmount]);
+    txHash = response as String;
+    setState(() {});
+    debugPrint("Withdrawn ");
+
+    return response;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -106,10 +185,10 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                     ),
                     data
-                        ? const Center(
+                        ? Center(
                             child: Text(
-                              "\$1",
-                              style: TextStyle(
+                              "\$$myData",
+                              style: const TextStyle(
                                   fontWeight: FontWeight.bold, fontSize: 26),
                             ),
                           )
@@ -121,7 +200,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
               Padding(
-                padding: EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(16.0),
                 child: SliderWidget(
                   min: 0,
                   max: 100,
@@ -144,7 +223,9 @@ class _MyHomePageState extends State<MyHomePage> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(5),
                         ),
-                        onPressed: () {},
+                        onPressed: () {
+                          getBalance(myAddress);
+                        },
                         icon: const Icon(
                           Icons.refresh,
                           color: Colors.white,
@@ -164,7 +245,9 @@ class _MyHomePageState extends State<MyHomePage> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(5),
                         ),
-                        onPressed: () {},
+                        onPressed: () {
+                          depositCoin();
+                        },
                         icon: const Icon(
                           Icons.call_made,
                           color: Colors.white,
@@ -184,7 +267,9 @@ class _MyHomePageState extends State<MyHomePage> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(5),
                         ),
-                        onPressed: () {},
+                        onPressed: () {
+                          withdrawCoin();
+                        },
                         icon: const Icon(
                           Icons.call_received_sharp,
                           color: Colors.white,
@@ -199,9 +284,10 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                   ],
                 ),
-              )
+              ),
             ],
           ),
+          txHash != null ? Text(txHash) : Container(),
         ],
       ),
     );
